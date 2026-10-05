@@ -19,6 +19,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         Log.write("launched\(options.isDevMode ? " (developer mode)" : "")")
         menu = MenuBarController(devMode: options.isDevMode)
         menu.onLockNow = { [weak self] in self?.controller.handle(.lockRequested(.local)) }
+        menu.insertItem("Install iPhone Shortcut…", action: #selector(installShortcut), target: self)
+        menu.insertItem("Reset Secret…", action: #selector(resetSecret), target: self)
         startRelay()
         controller.start()
         if options.lockOnLaunch {
@@ -50,6 +52,59 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         relay.start()
         self.relay = relay
+    }
+
+    @objc private func installShortcut() {
+        guard let topic = try? topicStore.loadOrCreate() else { return }
+        NSApp.activate(ignoringOtherApps: true)
+        do {
+            let file = try ShortcutInstaller.install(topic: topic)
+            Log.write("shortcut signed and opened")
+            let alert = NSAlert()
+            alert.messageText = "Add the “Lock Mac” Shortcut"
+            alert.informativeText = """
+                Shortcuts is opening — click “Add Shortcut”. It syncs to your iPhone through iCloud \
+                (iPhone Settings › Apps › Shortcuts › iCloud Sync). You can also AirDrop the file to your iPhone.
+                """
+            alert.addButton(withTitle: "OK")
+            alert.addButton(withTitle: "Show File for AirDrop")
+            if alert.runModal() == .alertSecondButtonReturn {
+                NSWorkspace.shared.activateFileViewerSelecting([file])
+            }
+        } catch {
+            Log.write("shortcut install failed: \(error)")
+            showManualInstructions(topic: topic)
+        }
+    }
+
+    private func showManualInstructions(topic: String) {
+        let alert = NSAlert()
+        alert.messageText = "Set up the Shortcut by hand"
+        alert.informativeText = ShortcutBuilder.manualInstructions(topic: topic)
+        alert.addButton(withTitle: "Copy Instructions")
+        alert.addButton(withTitle: "Close")
+        if alert.runModal() == .alertFirstButtonReturn {
+            NSPasteboard.general.clearContents()
+            NSPasteboard.general.setString(alert.informativeText, forType: .string)
+        }
+    }
+
+    @objc private func resetSecret() {
+        NSApp.activate(ignoringOtherApps: true)
+        let alert = NSAlert()
+        alert.messageText = "Reset the secret?"
+        alert.informativeText = "Your current iPhone Shortcut will stop working. You'll install a new one next."
+        alert.addButton(withTitle: "Reset")
+        alert.addButton(withTitle: "Cancel")
+        guard alert.runModal() == .alertFirstButtonReturn else { return }
+        do {
+            let topic = try topicStore.reset()
+            relay?.change(topic: topic)
+            Log.write("secret reset")
+            installShortcut()
+        } catch {
+            Log.write("secret reset failed: \(error)")
+        }
     }
 
     private static func describe(_ status: RelayClient.Status) -> (String, Bool) {
