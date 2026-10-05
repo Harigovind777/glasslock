@@ -13,6 +13,8 @@ final class ShieldWindow: NSWindow {
 final class GlassOverlay {
     /// Darkening over the blur. Raise it if text under the overlay is readable.
     static let tintAlpha: CGFloat = 0.35
+    /// Shown large in the middle of every locked screen.
+    static let bannerText = "PODEY"
 
     static let kioskOptions: NSApplication.PresentationOptions = [
         .hideDock, .hideMenuBar, .disableProcessSwitching, .disableForceQuit,
@@ -137,8 +139,34 @@ final class GlassOverlay {
         tint.wantsLayer = true
         tint.layer?.backgroundColor = NSColor.black.withAlphaComponent(tintAlpha).cgColor
         blur.addSubview(tint)
+        addBanner(to: blur, screenWidth: screen.frame.width)
         window.contentView = blur
         return window
+    }
+
+    /// Big rounded "PODEY" centred on the screen, sized to the screen width.
+    static func addBanner(to view: NSView, screenWidth: CGFloat) {
+        let size = min(160, max(64, screenWidth * 0.1))
+        var font = NSFont.systemFont(ofSize: size, weight: .black)
+        if let rounded = font.fontDescriptor.withDesign(.rounded) {
+            font = NSFont(descriptor: rounded, size: size) ?? font
+        }
+        let shadow = NSShadow()
+        shadow.shadowColor = NSColor.black.withAlphaComponent(0.3)
+        shadow.shadowBlurRadius = 18
+        shadow.shadowOffset = NSSize(width: 0, height: -2)
+        let banner = NSTextField(labelWithAttributedString: NSAttributedString(string: bannerText, attributes: [
+            .font: font,
+            .foregroundColor: NSColor.white.withAlphaComponent(0.92),
+            .kern: size * 0.08,
+            .shadow: shadow,
+        ]))
+        banner.translatesAutoresizingMaskIntoConstraints = false
+        view.addSubview(banner)
+        NSLayoutConstraint.activate([
+            banner.centerXAnchor.constraint(equalTo: view.centerXAnchor),
+            banner.centerYAnchor.constraint(equalTo: view.centerYAnchor),
+        ])
     }
 
     // MARK: Guarding

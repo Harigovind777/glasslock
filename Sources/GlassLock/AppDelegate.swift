@@ -16,6 +16,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        if let path = options.snapshotPath {
+            LockSnapshot.write(to: path)
+            exit(0)
+        }
         Log.write("launched\(options.isDevMode ? " (developer mode)" : "")")
         menu = MenuBarController(devMode: options.isDevMode)
         menu.onLockNow = { [weak self] in self?.controller.handle(.lockRequested(.local)) }

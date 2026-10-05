@@ -80,6 +80,16 @@ import Testing
         #expect(options.autoUnlockSeconds == 30)
     }
 
+    @Test func snapshotParsesPath() {
+        let options = LaunchOptions.parse(["GlassLock", "--dev-snapshot", "/tmp/lock.png"])
+        #expect(options.snapshotPath == "/tmp/lock.png")
+        #expect(options.isDevMode)
+    }
+
+    @Test func snapshotWithoutPathIsIgnored() {
+        #expect(LaunchOptions.parse(["GlassLock", "--dev-snapshot"]).snapshotPath == nil)
+    }
+
     @Test func lockNowKeepsExplicitAutoUnlock() {
         let options = LaunchOptions.parse(["GlassLock", "--dev-lock-now", "--dev-auto-unlock", "15"])
         #expect(options.autoUnlockSeconds == 15)

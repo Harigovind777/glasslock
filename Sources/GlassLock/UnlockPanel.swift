@@ -13,8 +13,8 @@ final class UnlockPanel: NSView {
 
     let passwordField = NSSecureTextField()
     private let passwordPill = NSView()
-    private let dateLabel = UnlockPanel.label("", size: 20, weight: .medium, alpha: 0.85)
-    private let timeLabel = UnlockPanel.label("", size: 96, weight: .semibold, alpha: 0.92)
+    private let dateLabel = UnlockPanel.label("", size: 17, weight: .medium, alpha: 0.85)
+    private let timeLabel = UnlockPanel.label("", size: 64, weight: .semibold, alpha: 0.9)
     private let statusLabel = UnlockPanel.label("", size: 12, weight: .medium, alpha: 0.75)
     private let touchIDSlot = NSView()
     private let touchIDBalance = NSView()
@@ -22,6 +22,8 @@ final class UnlockPanel: NSView {
     private var context: LAContext?
     private var clockTimer: Timer?
     private var verifying = false
+    /// Height of the password field and the Touch ID glyph beside it.
+    private static let fieldHeight: CGFloat = 32
 
     init(caption: String) {
         super.init(frame: .zero)
@@ -39,8 +41,8 @@ final class UnlockPanel: NSView {
         for slot in [touchIDSlot, touchIDBalance] {
             slot.translatesAutoresizingMaskIntoConstraints = false
             NSLayoutConstraint.activate([
-                slot.widthAnchor.constraint(equalToConstant: 30),
-                slot.heightAnchor.constraint(equalToConstant: 30),
+                slot.widthAnchor.constraint(equalToConstant: Self.fieldHeight),
+                slot.heightAnchor.constraint(equalToConstant: Self.fieldHeight),
             ])
         }
         let entryRow = NSStackView(views: [touchIDBalance, passwordPill, touchIDSlot])
@@ -58,7 +60,7 @@ final class UnlockPanel: NSView {
         addSubview(account)
         NSLayoutConstraint.activate([
             clock.centerXAnchor.constraint(equalTo: centerXAnchor),
-            clock.topAnchor.constraint(equalTo: topAnchor, constant: 96),
+            clock.topAnchor.constraint(equalTo: topAnchor, constant: 72),
             account.centerXAnchor.constraint(equalTo: centerXAnchor),
             account.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -88),
         ])
@@ -99,13 +101,16 @@ final class UnlockPanel: NSView {
             return
         }
         self.context = context
-        let view = LAAuthenticationView(context: context, controlSize: .regular)
+        // .small draws a 32 pt glyph — the same height as the password field.
+        let view = LAAuthenticationView(context: context, controlSize: .small)
         view.translatesAutoresizingMaskIntoConstraints = false
         touchIDSlot.subviews.forEach { $0.removeFromSuperview() }
         touchIDSlot.addSubview(view)
         NSLayoutConstraint.activate([
-            view.centerXAnchor.constraint(equalTo: touchIDSlot.centerXAnchor),
-            view.centerYAnchor.constraint(equalTo: touchIDSlot.centerYAnchor),
+            view.leadingAnchor.constraint(equalTo: touchIDSlot.leadingAnchor),
+            view.trailingAnchor.constraint(equalTo: touchIDSlot.trailingAnchor),
+            view.topAnchor.constraint(equalTo: touchIDSlot.topAnchor),
+            view.bottomAnchor.constraint(equalTo: touchIDSlot.bottomAnchor),
         ])
         context.evaluatePolicy(.deviceOwnerAuthenticationWithBiometrics, localizedReason: "unlock GlassLock") { [weak self] success, error in
             DispatchQueue.main.async {
@@ -175,7 +180,7 @@ final class UnlockPanel: NSView {
     private func configurePasswordPill() {
         passwordPill.wantsLayer = true
         passwordPill.layer?.backgroundColor = NSColor.white.withAlphaComponent(0.18).cgColor
-        passwordPill.layer?.cornerRadius = 15
+        passwordPill.layer?.cornerRadius = Self.fieldHeight / 2
         passwordPill.layer?.borderWidth = 0.5
         passwordPill.layer?.borderColor = NSColor.white.withAlphaComponent(0.25).cgColor
         passwordPill.translatesAutoresizingMaskIntoConstraints = false
@@ -186,16 +191,22 @@ final class UnlockPanel: NSView {
         passwordField.alignment = .center
         passwordField.font = .systemFont(ofSize: 13)
         passwordField.textColor = .white
+        let centered = NSMutableParagraphStyle()
+        centered.alignment = .center
         passwordField.placeholderAttributedString = NSAttributedString(
             string: "Enter Password",
-            attributes: [.foregroundColor: NSColor.white.withAlphaComponent(0.55), .font: NSFont.systemFont(ofSize: 13)])
+            attributes: [
+                .foregroundColor: NSColor.white.withAlphaComponent(0.55),
+                .font: NSFont.systemFont(ofSize: 13),
+                .paragraphStyle: centered,
+            ])
         passwordField.target = self
         passwordField.action = #selector(submit)
         passwordField.translatesAutoresizingMaskIntoConstraints = false
         passwordPill.addSubview(passwordField)
         NSLayoutConstraint.activate([
             passwordPill.widthAnchor.constraint(equalToConstant: 220),
-            passwordPill.heightAnchor.constraint(equalToConstant: 30),
+            passwordPill.heightAnchor.constraint(equalToConstant: Self.fieldHeight),
             passwordField.leadingAnchor.constraint(equalTo: passwordPill.leadingAnchor, constant: 14),
             passwordField.trailingAnchor.constraint(equalTo: passwordPill.trailingAnchor, constant: -14),
             passwordField.centerYAnchor.constraint(equalTo: passwordPill.centerYAnchor),
