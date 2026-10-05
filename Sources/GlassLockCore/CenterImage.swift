@@ -45,10 +45,11 @@ public struct CenterImageStore {
 }
 
 public enum CenterImageLayout {
-    /// Scales the image to fit within half the screen width and 35% of its height, keeping its shape.
+    /// Scales the image to fit within half the screen width and 30% of its height, keeping its
+    /// shape — leaves clear space above the name and password field.
     public static func fittedSize(image: CGSize, screen: CGSize) -> CGSize {
         guard image.width > 0, image.height > 0 else { return .zero }
-        let scale = min(screen.width * 0.5 / image.width, screen.height * 0.35 / image.height)
+        let scale = min(screen.width * 0.5 / image.width, screen.height * 0.3 / image.height)
         return CGSize(width: image.width * scale, height: image.height * scale)
     }
 }

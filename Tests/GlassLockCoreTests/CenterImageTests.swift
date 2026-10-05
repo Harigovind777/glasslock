@@ -65,14 +65,14 @@ import Testing
         #expect(close(size, CGSize(width: 735, height: 183.75)))
     }
 
-    @Test func tallImageIsLimitedBy35PercentOfScreenHeight() {
+    @Test func tallImageIsLimitedBy30PercentOfScreenHeight() {
         let size = CenterImageLayout.fittedSize(image: CGSize(width: 400, height: 800), screen: screen)
-        #expect(close(size, CGSize(width: 167.3, height: 334.6)))
+        #expect(close(size, CGSize(width: 143.4, height: 286.8)))
     }
 
     @Test func smallImageIsScaledUpToFit() {
         let size = CenterImageLayout.fittedSize(image: CGSize(width: 100, height: 50), screen: screen)
-        #expect(close(size, CGSize(width: 669.2, height: 334.6)))
+        #expect(close(size, CGSize(width: 573.6, height: 286.8)))
     }
 
     @Test func emptyImageGivesZero() {

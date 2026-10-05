@@ -16,6 +16,9 @@ final class GlassOverlay {
     static let tintAlpha: CGFloat = 0.35
     /// Shown large in the middle of every locked screen.
     static let bannerText = "PODEY"
+    /// Lifts the centrepiece by this fraction of the screen height, so it sits midway
+    /// between the clock and the account details.
+    static let centerpieceLift: CGFloat = 0.05
 
     static let kioskOptions: NSApplication.PresentationOptions = [
         .hideDock, .hideMenuBar, .disableProcessSwitching, .disableForceQuit,
@@ -151,7 +154,7 @@ final class GlassOverlay {
            let image = NSImage(contentsOf: url) {
             addImage(image, to: view, screenSize: screenSize)
         } else {
-            addBanner(to: view, screenWidth: screenSize.width)
+            addBanner(to: view, screenSize: screenSize)
         }
     }
 
@@ -166,15 +169,15 @@ final class GlassOverlay {
         view.addSubview(imageView)
         NSLayoutConstraint.activate([
             imageView.centerXAnchor.constraint(equalTo: view.centerXAnchor),
-            imageView.centerYAnchor.constraint(equalTo: view.centerYAnchor),
+            imageView.centerYAnchor.constraint(equalTo: view.centerYAnchor, constant: -screenSize.height * centerpieceLift),
             imageView.widthAnchor.constraint(equalToConstant: size.width),
             imageView.heightAnchor.constraint(equalToConstant: size.height),
         ])
     }
 
     /// Big rounded "PODEY" centred on the screen, sized to the screen width.
-    private static func addBanner(to view: NSView, screenWidth: CGFloat) {
-        let size = min(160, max(64, screenWidth * 0.1))
+    private static func addBanner(to view: NSView, screenSize: CGSize) {
+        let size = min(160, max(64, screenSize.width * 0.1))
         var font = NSFont.systemFont(ofSize: size, weight: .black)
         if let rounded = font.fontDescriptor.withDesign(.rounded) {
             font = NSFont(descriptor: rounded, size: size) ?? font
@@ -193,7 +196,7 @@ final class GlassOverlay {
         view.addSubview(banner)
         NSLayoutConstraint.activate([
             banner.centerXAnchor.constraint(equalTo: view.centerXAnchor),
-            banner.centerYAnchor.constraint(equalTo: view.centerYAnchor),
+            banner.centerYAnchor.constraint(equalTo: view.centerYAnchor, constant: -screenSize.height * centerpieceLift),
         ])
     }
 
