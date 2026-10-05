@@ -126,9 +126,14 @@ glasslock/
    content shows as moving colour, text is unreadable. If the screenshot check
    shows readable text, increase strength (tint opacity, then a stronger blur
    radius via window-server blur) until it passes.
-4. Unlock panel (main screen, bottom centre, frosted card): lock icon,
-   "Locked from iPhone · <time>" (or "Locked from this Mac"), Touch ID view,
-   secure password field.
+4. Lock screen content (main screen), in the style of the macOS lock screen
+   with no card: date and a large clock at the top; at the bottom the account
+   picture (initials if none), the user's name, "Locked from iPhone · <time>"
+   (or "Locked from this Mac"), a rounded translucent password field with a
+   small Touch ID glyph beside it, and the status line "Touch ID or Enter
+   Password". The overlay fades in (0.35 s) and out (0.25 s); a wrong
+   password shakes the field. (Revised 2026-10-05 at the user's request for a
+   cleaner, more aesthetic look.)
 5. App is activated and `NSApp.presentationOptions` set to
    `hideDock, hideMenuBar, disableProcessSwitching, disableForceQuit,
    disableSessionTermination, disableHideApplication, disableAppleMenu`.

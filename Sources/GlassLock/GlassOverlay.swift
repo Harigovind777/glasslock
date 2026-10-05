@@ -46,6 +46,7 @@ final class GlassOverlay {
         NSApp.setActivationPolicy(.regular)
         NSApp.activate(ignoringOtherApps: true)
         layoutWindows()
+        fade(windows, to: 1, duration: 0.35)
         savedOptions = NSApp.presentationOptions
         NSApp.presentationOptions = Self.kioskOptions
         startGuarding()
@@ -64,10 +65,13 @@ final class GlassOverlay {
     func hide() {
         guard let panel else { return }
         stopGuarding()
-        panel.stopTouchID()
-        windows.forEach { $0.orderOut(nil) }
+        panel.stop()
+        let closing = windows
         windows.removeAll()
         self.panel = nil
+        fade(closing, to: 0, duration: 0.25) {
+            closing.forEach { $0.orderOut(nil) }
+        }
         NSApp.presentationOptions = savedOptions
         NSApp.setActivationPolicy(.accessory)
         Log.write("overlay hidden")
@@ -91,12 +95,26 @@ final class GlassOverlay {
         panel.translatesAutoresizingMaskIntoConstraints = false
         content.addSubview(panel)
         NSLayoutConstraint.activate([
-            panel.centerXAnchor.constraint(equalTo: content.centerXAnchor),
-            panel.bottomAnchor.constraint(equalTo: content.bottomAnchor, constant: -96),
+            panel.leadingAnchor.constraint(equalTo: content.leadingAnchor),
+            panel.trailingAnchor.constraint(equalTo: content.trailingAnchor),
+            panel.topAnchor.constraint(equalTo: content.topAnchor),
+            panel.bottomAnchor.constraint(equalTo: content.bottomAnchor),
         ])
         windows.forEach { $0.orderFrontRegardless() }
         host.makeKeyAndOrderFront(nil)
-        host.makeFirstResponder(panel.passwordField)
+        panel.focusPassword()
+    }
+
+    private func fade(_ targets: [ShieldWindow], to alpha: CGFloat, duration: TimeInterval, then completion: (@MainActor @Sendable () -> Void)? = nil) {
+        if alpha > 0 {
+            targets.forEach { $0.alphaValue = 0 }
+        }
+        NSAnimationContext.runAnimationGroup({ context in
+            context.duration = duration
+            targets.forEach { $0.animator().alphaValue = alpha }
+        }, completionHandler: {
+            MainActor.assumeIsolated { completion?() }
+        })
     }
 
     private static func makeWindow(for screen: NSScreen) -> ShieldWindow {
@@ -159,6 +177,6 @@ final class GlassOverlay {
         NSApp.activate(ignoringOtherApps: true)
         windows.forEach { $0.orderFrontRegardless() }
         host.makeKeyAndOrderFront(nil)
-        host.makeFirstResponder(panel.passwordField)
+        panel.focusPassword()
     }
 }
