@@ -1,4 +1,5 @@
 import AppKit
+import GlassLockCore
 
 /// Borderless window that may take keyboard focus.
 final class ShieldWindow: NSWindow {
@@ -139,13 +140,40 @@ final class GlassOverlay {
         tint.wantsLayer = true
         tint.layer?.backgroundColor = NSColor.black.withAlphaComponent(tintAlpha).cgColor
         blur.addSubview(tint)
-        addBanner(to: blur, screenWidth: screen.frame.width)
+        addCenterpiece(to: blur, screenSize: screen.frame.size)
         window.contentView = blur
         return window
     }
 
+    /// The user's chosen image centred on the screen, or the PODEY text if none is set.
+    static func addCenterpiece(to view: NSView, screenSize: CGSize) {
+        if let url = CenterImageStore(directory: AppPaths.supportDirectory).currentURL,
+           let image = NSImage(contentsOf: url) {
+            addImage(image, to: view, screenSize: screenSize)
+        } else {
+            addBanner(to: view, screenWidth: screenSize.width)
+        }
+    }
+
+    private static func addImage(_ image: NSImage, to view: NSView, screenSize: CGSize) {
+        let size = CenterImageLayout.fittedSize(image: image.size, screen: screenSize)
+        let imageView = NSImageView(image: image)
+        imageView.imageScaling = .scaleProportionallyUpOrDown
+        imageView.wantsLayer = true
+        imageView.layer?.cornerRadius = 20
+        imageView.layer?.masksToBounds = true
+        imageView.translatesAutoresizingMaskIntoConstraints = false
+        view.addSubview(imageView)
+        NSLayoutConstraint.activate([
+            imageView.centerXAnchor.constraint(equalTo: view.centerXAnchor),
+            imageView.centerYAnchor.constraint(equalTo: view.centerYAnchor),
+            imageView.widthAnchor.constraint(equalToConstant: size.width),
+            imageView.heightAnchor.constraint(equalToConstant: size.height),
+        ])
+    }
+
     /// Big rounded "PODEY" centred on the screen, sized to the screen width.
-    static func addBanner(to view: NSView, screenWidth: CGFloat) {
+    private static func addBanner(to view: NSView, screenWidth: CGFloat) {
         let size = min(160, max(64, screenWidth * 0.1))
         var font = NSFont.systemFont(ofSize: size, weight: .black)
         if let rounded = font.fontDescriptor.withDesign(.rounded) {

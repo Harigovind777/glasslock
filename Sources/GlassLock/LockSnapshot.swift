@@ -15,7 +15,7 @@ enum LockSnapshot {
         gradient.colors = [NSColor(calibratedRed: 0.25, green: 0.3, blue: 0.4, alpha: 1).cgColor,
                            NSColor(calibratedRed: 0.12, green: 0.14, blue: 0.2, alpha: 1).cgColor]
         root.layer?.addSublayer(gradient)
-        GlassOverlay.addBanner(to: root, screenWidth: size.width)
+        GlassOverlay.addCenterpiece(to: root, screenSize: size)
 
         let panel = UnlockPanel(caption: "Locked from iPhone · 11:40")
         panel.translatesAutoresizingMaskIntoConstraints = false

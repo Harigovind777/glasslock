@@ -1,5 +1,6 @@
 import AppKit
 import GlassLockCore
+import UniformTypeIdentifiers
 
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate {
@@ -25,6 +26,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         menu.onLockNow = { [weak self] in self?.controller.handle(.lockRequested(.local)) }
         menu.insertItem("Install iPhone Shortcut…", action: #selector(installShortcut), target: self)
         menu.insertItem("Reset Secret…", action: #selector(resetSecret), target: self)
+        menu.insertItem("Lock Screen Image…", action: #selector(chooseCenterImage), target: self)
+        menu.insertItem("Use PODEY Text", action: #selector(useBannerText), target: self)
         startRelay()
         controller.start()
         if options.lockOnLaunch {
@@ -91,6 +94,30 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             NSPasteboard.general.clearContents()
             NSPasteboard.general.setString(alert.informativeText, forType: .string)
         }
+    }
+
+    @objc private func chooseCenterImage() {
+        NSApp.activate(ignoringOtherApps: true)
+        let panel = NSOpenPanel()
+        panel.message = "Choose an image for the middle of the lock screen (a PNG with a transparent background looks best)."
+        panel.allowedContentTypes = CenterImageStore.supportedExtensions.compactMap { UTType(filenameExtension: $0) }
+        panel.allowsMultipleSelection = false
+        guard panel.runModal() == .OK, let source = panel.url else { return }
+        do {
+            try CenterImageStore(directory: AppPaths.supportDirectory).save(from: source)
+            Log.write("lock screen image set")
+        } catch {
+            Log.write("lock screen image failed: \(error)")
+            let alert = NSAlert()
+            alert.messageText = "Couldn't use that image"
+            alert.informativeText = "Choose a PNG, JPG, HEIC, TIFF or GIF file."
+            alert.runModal()
+        }
+    }
+
+    @objc private func useBannerText() {
+        try? CenterImageStore(directory: AppPaths.supportDirectory).clear()
+        Log.write("lock screen image cleared")
     }
 
     @objc private func resetSecret() {
