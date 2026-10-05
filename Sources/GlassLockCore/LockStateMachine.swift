@@ -17,6 +17,10 @@ public enum LockEvent: Equatable, Sendable {
     case overlayFailed
     case launchedWithCrashFlag
     case systemUnlocked
+    /// The system reports the real lock screen is up.
+    case realLockConfirmed
+    /// The real lock was asked for but the screen never locked.
+    case realLockFailed
 }
 
 public enum KeepAwakeLevel: Equatable, Sendable {
@@ -37,6 +41,8 @@ public enum LockEffect: Equatable, Sendable {
     case showOverlay(LockSource)
     case hideOverlay
     case engageRealLock
+    /// Check that the real lock screen actually came up; report realLockConfirmed / realLockFailed.
+    case verifyRealLock
     case passwordRejected(attemptsLeft: Int)
     case ack(AckKind, commandID: String)
 }
@@ -62,11 +68,18 @@ public struct LockStateMachine: Sendable {
             }
             return effects
 
-        case (.glassLocked, .lockRequested(let source)), (.realLocked, .lockRequested(let source)):
+        case (.glassLocked, .lockRequested(let source)):
             if case .remote(let id) = source {
                 return [.ack(.alreadyLocked, commandID: id)]
             }
             return []
+
+        case (.realLocked, .lockRequested(let source)):
+            // Re-check: if the real lock is somehow not up, verification falls back to the glass lock.
+            if case .remote(let id) = source {
+                return [.ack(.alreadyLocked, commandID: id), .verifyRealLock]
+            }
+            return [.verifyRealLock]
 
         case (.glassLocked, .authSucceeded):
             state = .unlocked
@@ -84,22 +97,31 @@ public struct LockStateMachine: Sendable {
             return escalate()
 
         case (_, .launchedWithCrashFlag):
+            // The crash flag stays set until the real lock is confirmed.
             state = .realLocked
-            return [.engageRealLock, .keepAwake(.systemOnly), .setCrashFlag(false)]
+            return [.engageRealLock, .verifyRealLock, .keepAwake(.systemOnly)]
+
+        case (.realLocked, .realLockConfirmed):
+            return [.hideOverlay, .keepAwake(.systemOnly), .setCrashFlag(false)]
+
+        case (.realLocked, .realLockFailed):
+            // Never leave the Mac open: back to the glass lock, one wrong password from retrying.
+            state = .glassLocked(failedAttempts: Self.maxPasswordAttempts - 1)
+            return [.setCrashFlag(true), .keepAwake(.displayAndSystem), .showOverlay(.local)]
 
         case (.realLocked, .systemUnlocked):
             state = .unlocked
-            return [.keepAwake(.off)]
+            return [.hideOverlay, .keepAwake(.off), .setCrashFlag(false)]
 
         default:
             return []
         }
     }
 
-    /// Hand over to the real macOS lock screen. The real lock is engaged before
-    /// the overlay is removed so the screen is never left open.
+    /// Hand over to the real macOS lock screen. The overlay, keep-awake and crash flag
+    /// stay as they are until the real lock is confirmed, so the screen is never left open.
     private mutating func escalate() -> [LockEffect] {
         state = .realLocked
-        return [.engageRealLock, .hideOverlay, .keepAwake(.systemOnly), .setCrashFlag(false)]
+        return [.engageRealLock, .verifyRealLock]
     }
 }

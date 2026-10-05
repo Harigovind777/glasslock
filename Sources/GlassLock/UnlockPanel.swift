@@ -85,6 +85,10 @@ final class UnlockPanel: NSView {
     func stop() {
         clockTimer?.invalidate()
         clockTimer = nil
+        stopTouchID()
+    }
+
+    func stopTouchID() {
         let context = self.context
         self.context = nil
         context?.invalidate()

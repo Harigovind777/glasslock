@@ -1,9 +1,16 @@
+import CoreGraphics
 import Foundation
 
 /// Shows the real macOS lock screen. SACLockScreenImmediate verified on macOS 27;
 /// `pmset displaysleepnow` only locks if "require password" is set to immediately.
 enum RealLock {
     private typealias LockFunction = @convention(c) () -> Int32
+
+    /// True while the system lock screen is up.
+    static func isScreenLocked() -> Bool {
+        let session = CGSessionCopyCurrentDictionary() as? [String: Any]
+        return (session?["CGSSessionScreenIsLocked"] as? Bool) ?? false
+    }
 
     @discardableResult
     static func engage() -> Bool {

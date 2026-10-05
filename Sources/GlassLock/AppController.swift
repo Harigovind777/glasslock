@@ -58,18 +58,33 @@ final class AppController {
                 scheduleDevAutoUnlock(after: seconds, generation: lockGeneration)
             }
         case .hideOverlay:
-            if machine.state == .realLocked {
-                // Give the real lock screen time to cover the display first.
-                DispatchQueue.main.asyncAfter(deadline: .now() + 2) { [weak self] in self?.overlay.hide() }
-            } else {
-                overlay.hide()
-            }
+            overlay.hide()
         case .engageRealLock:
-            if !RealLock.engage() { Log.write("REAL LOCK FAILED") }
+            // Stop guarding focus and Touch ID so the real lock screen gets the keyboard and the finger.
+            overlay.suspendForRealLock()
+            if !RealLock.engage() { Log.write("real lock: request failed") }
+        case .verifyRealLock:
+            pollRealLock(until: Date().addingTimeInterval(3))
         case .passwordRejected(let attemptsLeft):
             overlay.showPasswordRejected(attemptsLeft: attemptsLeft)
         case .ack(let kind, let commandID):
             onAck(kind, commandID)
+        }
+    }
+
+    /// Reports realLockConfirmed as soon as the system lock screen is up, or
+    /// realLockFailed if it never comes up — then the glass lock stays on.
+    private func pollRealLock(until deadline: Date) {
+        if RealLock.isScreenLocked() {
+            Log.write("real lock: confirmed")
+            handle(.realLockConfirmed)
+        } else if Date() >= deadline {
+            Log.write("real lock: NOT confirmed — keeping the glass lock")
+            handle(.realLockFailed)
+        } else {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { [weak self] in
+                self?.pollRealLock(until: deadline)
+            }
         }
     }
 

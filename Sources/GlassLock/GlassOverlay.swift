@@ -35,11 +35,18 @@ final class GlassOverlay {
     private var appObservers: [NSObjectProtocol] = []
     private var workspaceObservers: [NSObjectProtocol] = []
     private var savedOptions: NSApplication.PresentationOptions = []
+    private var guarding = false
+    private var watchdog = FocusWatchdog()
+    private var watchdogTimer: Timer?
 
     var isVisible: Bool { panel != nil }
 
     func show(caption: String) {
-        guard !isVisible else { return }
+        guard !isVisible else {
+            // Already up (e.g. the real lock failed to engage): make sure it is guarding again.
+            resumeGuarding()
+            return
+        }
         guard !NSScreen.screens.isEmpty else {
             onFailure("no screens")
             return
@@ -58,14 +65,21 @@ final class GlassOverlay {
         startGuarding()
         panel.startTouchID()
         Log.write("overlay shown on \(windows.count) screen(s)")
+    }
 
-        // Fail closed: without keyboard focus, keystrokes would reach the apps underneath.
-        DispatchQueue.main.asyncAfter(deadline: .now() + 1) { [weak self] in
-            guard let self, self.panel === panel else { return }
-            if !NSApp.isActive || !(panel.window?.isKeyWindow ?? false) {
-                self.onFailure("could not take keyboard focus")
-            }
-        }
+    /// Hands the screen to the real macOS lock: stop reclaiming focus and stop
+    /// Touch ID so neither competes with the system lock screen. The glass stays up.
+    func suspendForRealLock() {
+        stopGuarding()
+        panel?.stopTouchID()
+    }
+
+    private func resumeGuarding() {
+        guard let panel, !guarding else { return }
+        Log.write("overlay: guarding again")
+        startGuarding()
+        panel.startTouchID()
+        reclaimFocus()
     }
 
     func hide() {
@@ -203,11 +217,24 @@ final class GlassOverlay {
     // MARK: Guarding
 
     private func startGuarding() {
+        guard !guarding else { return }
+        guarding = true
+        watchdog = FocusWatchdog()
+        watchdogTimer = Timer.scheduledTimer(withTimeInterval: 0.5, repeats: true) { [weak self] _ in
+            MainActor.assumeIsolated { self?.checkFocus() }
+        }
         let center = NotificationCenter.default
         let workspace = NSWorkspace.shared.notificationCenter
         appObservers = [
             center.addObserver(forName: NSApplication.didResignActiveNotification, object: nil, queue: .main) { [weak self] _ in
                 MainActor.assumeIsolated { self?.reclaimFocus() }
+            },
+            // A floating panel (Spotlight, launchers) can take the keyboard without activating its app.
+            center.addObserver(forName: NSWindow.didResignKeyNotification, object: nil, queue: .main) { [weak self] note in
+                MainActor.assumeIsolated {
+                    guard let self, let host = self.panel?.window, note.object as? NSWindow === host else { return }
+                    self.reclaimFocus()
+                }
             },
             center.addObserver(forName: NSApplication.didChangeScreenParametersNotification, object: nil, queue: .main) { [weak self] _ in
                 MainActor.assumeIsolated {
@@ -224,10 +251,28 @@ final class GlassOverlay {
     }
 
     private func stopGuarding() {
+        guarding = false
+        watchdogTimer?.invalidate()
+        watchdogTimer = nil
         appObservers.forEach { NotificationCenter.default.removeObserver($0) }
         workspaceObservers.forEach { NSWorkspace.shared.notificationCenter.removeObserver($0) }
         appObservers.removeAll()
         workspaceObservers.removeAll()
+    }
+
+    /// Fail closed: if keyboard focus cannot be held, keystrokes would reach the apps underneath.
+    private func checkFocus() {
+        guard let host = panel?.window else { return }
+        switch watchdog.tick(hasFocus: NSApp.isActive && host.isKeyWindow) {
+        case .none:
+            break
+        case .reclaim:
+            Log.write("overlay: lost keyboard focus, reclaiming")
+            reclaimFocus()
+        case .giveUp:
+            stopGuarding()
+            onFailure("could not keep keyboard focus")
+        }
     }
 
     /// Another app tried to take focus while locked: take it back.

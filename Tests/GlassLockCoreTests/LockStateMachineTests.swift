@@ -32,9 +32,9 @@ import Testing
         #expect(machine.handle(.lockRequested(.local)) == [])
     }
 
-    @Test func remoteLockWhileRealLockedAcksAlreadyLocked() {
+    @Test func remoteLockWhileRealLockedAcksAndRechecksTheRealLock() {
         var machine = LockStateMachine(state: .realLocked)
-        #expect(machine.handle(.lockRequested(.remote(commandID: "y"))) == [.ack(.alreadyLocked, commandID: "y")])
+        #expect(machine.handle(.lockRequested(.remote(commandID: "y"))) == [.ack(.alreadyLocked, commandID: "y"), .verifyRealLock])
         #expect(machine.state == .realLocked)
     }
 
@@ -53,31 +53,60 @@ import Testing
         #expect(machine.state == .glassLocked(failedAttempts: 4))
     }
 
-    @Test func fifthWrongPasswordEscalatesToRealLock() {
+    @Test func fifthWrongPasswordEscalatesButKeepsOverlayUntilRealLockIsConfirmed() {
         var machine = LockStateMachine(state: .glassLocked(failedAttempts: 4))
         let effects = machine.handle(.passwordFailed)
         #expect(machine.state == .realLocked)
-        #expect(effects == [.engageRealLock, .hideOverlay, .keepAwake(.systemOnly), .setCrashFlag(false)])
+        #expect(effects == [.engageRealLock, .verifyRealLock])
     }
 
-    @Test func overlayFailureEscalatesToRealLock() {
+    @Test func overlayFailureEscalatesButKeepsOverlayUntilRealLockIsConfirmed() {
         var machine = LockStateMachine(state: .glassLocked(failedAttempts: 0))
         let effects = machine.handle(.overlayFailed)
         #expect(machine.state == .realLocked)
-        #expect(effects == [.engageRealLock, .hideOverlay, .keepAwake(.systemOnly), .setCrashFlag(false)])
+        #expect(effects == [.engageRealLock, .verifyRealLock])
     }
 
-    @Test func crashFlagOnLaunchEngagesRealLock() {
+    @Test func confirmedRealLockRemovesOverlayAndClearsCrashFlag() {
+        var machine = LockStateMachine(state: .realLocked)
+        #expect(machine.handle(.realLockConfirmed) == [.hideOverlay, .keepAwake(.systemOnly), .setCrashFlag(false)])
+        #expect(machine.state == .realLocked)
+    }
+
+    @Test func failedRealLockFallsBackToGlassLock() {
+        var machine = LockStateMachine(state: .realLocked)
+        let effects = machine.handle(.realLockFailed)
+        #expect(machine.state == .glassLocked(failedAttempts: LockStateMachine.maxPasswordAttempts - 1))
+        #expect(effects == [.setCrashFlag(true), .keepAwake(.displayAndSystem), .showOverlay(.local)])
+    }
+
+    @Test func wrongPasswordAfterFailedRealLockTriesRealLockAgain() {
+        var machine = LockStateMachine(state: .realLocked)
+        _ = machine.handle(.realLockFailed)
+        #expect(machine.handle(.passwordFailed) == [.engageRealLock, .verifyRealLock])
+        #expect(machine.state == .realLocked)
+    }
+
+    @Test func crashFlagOnLaunchEngagesAndVerifiesRealLock() {
         var machine = LockStateMachine()
         let effects = machine.handle(.launchedWithCrashFlag)
         #expect(machine.state == .realLocked)
-        #expect(effects == [.engageRealLock, .keepAwake(.systemOnly), .setCrashFlag(false)])
+        #expect(effects == [.engageRealLock, .verifyRealLock, .keepAwake(.systemOnly)])
     }
 
-    @Test func systemUnlockAfterRealLockReturnsToUnlocked() {
+    @Test func systemUnlockAfterRealLockRemovesOverlayAndReturnsToUnlocked() {
         var machine = LockStateMachine(state: .realLocked)
-        #expect(machine.handle(.systemUnlocked) == [.keepAwake(.off)])
+        #expect(machine.handle(.systemUnlocked) == [.hideOverlay, .keepAwake(.off), .setCrashFlag(false)])
         #expect(machine.state == .unlocked)
+    }
+
+    @Test func lateRealLockResultCannotTouchANewerGlassLock() {
+        var machine = LockStateMachine(state: .realLocked)
+        _ = machine.handle(.systemUnlocked)
+        _ = machine.handle(.lockRequested(.remote(commandID: "new")))
+        #expect(machine.handle(.realLockConfirmed) == [])
+        #expect(machine.handle(.realLockFailed) == [])
+        #expect(machine.state == .glassLocked(failedAttempts: 0))
     }
 
     @Test func systemUnlockWhileGlassLockedIsIgnored() {

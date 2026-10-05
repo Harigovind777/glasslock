@@ -158,18 +158,24 @@ glasslock/
 - If another app takes focus while locked, the overlay takes it back.
 - Connecting/disconnecting a display while locked rebuilds the windows so every
   screen stays covered.
-- On escalation to the real lock, the overlay is removed 2 s after the real
-  lock engages, so the screen is never briefly uncovered.
+- On escalation to the real lock, the overlay is removed only after the system
+  reports the lock screen is up (no timed hide), and focus guarding and Touch ID
+  are suspended so they do not compete with the system lock screen.
+- A focus watchdog checks twice a second that the lock holds keyboard focus
+  (also catching floating panels such as Spotlight), reclaims it, and falls
+  back to the real lock if it cannot.
 - While glass-locked the app refuses to quit (logout, AppleScript quit).
 
 ### Fail-closed rules
 
 | Trigger | Action |
 |---|---|
-| 5th wrong password | RealLock, tear down overlay, state → `realLocked` |
-| Overlay fails to build/show | RealLock, state → `realLocked` |
-| App launches and crash flag is set | RealLock immediately, clear flag, state → `realLocked` |
-| `realLocked` and `com.apple.screenIsUnlocked` received | release assertions, state → `unlocked` |
+| 5th wrong password | RealLock, then verify; state → `realLocked` (overlay stays until confirmed) |
+| Overlay fails to build/show, or keyboard focus cannot be held (watchdog: 4 reclaims, then give up) | RealLock, then verify; state → `realLocked` |
+| App launches and crash flag is set | RealLock + verify; flag cleared only once the real lock is confirmed |
+| Real lock confirmed (`CGSSessionScreenIsLocked`) | remove overlay, clear crash flag |
+| Real lock NOT confirmed within 3 s | back to the glass lock (one wrong password from retrying); never left open |
+| `realLocked` and `com.apple.screenIsUnlocked` received | remove overlay, release assertions, clear flag, state → `unlocked` |
 | `lock` received while `glassLocked` | ack `already-locked:<id>`, no change |
 | `lock` received while `realLocked` | ack `already-locked:<id>`, no change |
 
