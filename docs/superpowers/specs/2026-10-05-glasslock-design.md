@@ -103,9 +103,9 @@ glasslock/
 | **LockStateMachine** | States `unlocked`, `glassLocked(failedAttempts)`, `realLocked`. Events: `lockRequested`, `authSucceeded`, `passwordFailed`, `overlayFailed`, `launchedWithCrashFlag`, `systemUnlocked`. Outputs side-effect *intents* (show overlay, real-lock, ack, keep-awake on/off) that the app layer executes. | nothing |
 | **RelayMessage** | Decode one ntfy JSON line; accept only `event == "message"` with body `lock`; reject if `now - time > 120 s`; dedupe by message id. | nothing |
 | **Backoff** | Reconnect delays 1, 2, 4, 8 … capped at 60 s; reset on successful connect. | nothing |
-| **Secret** | Generate topic `glasslock-` + 32 chars from a CSPRNG (base62). | Security (SecRandomCopyBytes) |
+| **Secret** | Generate topic `glasslock-` + 32 chars from a CSPRNG (base62). | `SystemRandomNumberGenerator` (CSPRNG) |
 | **ShortcutBuilder** | Produce the Shortcut workflow plist with the topic embedded. | nothing |
-| **RelayClient** | `GET https://ntfy.sh/<topic>/json?since=<last id or 2m>`, read lines, feed RelayMessage; publish acks to `<topic>-ack`; report connection status. | URLSession, Backoff |
+| **RelayClient** | `GET https://ntfy.sh/<topic>/json?since=<last id or launch time>`, read lines, feed RelayMessage; publish acks to `<topic>-ack`; report connection status. | URLSession, Backoff |
 | **GlassOverlay** | One borderless window per screen at shielding level, live blur + tint, unlock panel on the main screen; sets kiosk presentation options. | AppKit |
 | **Authenticator** | Embedded Touch ID view (`LAAuthenticationView`) re-armed after failure; password verified against the local user record via OpenDirectory, off the main thread. | LocalAuthentication(EmbeddedUI), OpenDirectory |
 | **KeepAwake** | Hold `PreventUserIdleDisplaySleep` + `PreventUserIdleSystemSleep` while glass-locked; hold system-sleep assertion only while real-locked until the system reports unlock. | IOKit |
@@ -146,6 +146,17 @@ glasslock/
 - `authSucceeded`: remove overlay, restore presentation options and activation
   policy, release assertions, clear crash flag, state → `unlocked`.
 
+### Extra safeguards
+
+- One second after showing, the overlay checks it actually holds keyboard
+  focus; if not, it reports failure → real lock.
+- If another app takes focus while locked, the overlay takes it back.
+- Connecting/disconnecting a display while locked rebuilds the windows so every
+  screen stays covered.
+- On escalation to the real lock, the overlay is removed 2 s after the real
+  lock engages, so the screen is never briefly uncovered.
+- While glass-locked the app refuses to quit (logout, AppleScript quit).
+
 ### Fail-closed rules
 
 | Trigger | Action |
@@ -162,12 +173,18 @@ Not preventable (documented, accepted): long-press power button, closing the lid
 ## 5. Relay protocol (ntfy.sh)
 
 - **Command topic** `<topic>`; **ack topic** `<topic>-ack`.
-- **Phone → Mac:** `POST https://ntfy.sh/<topic>` body `lock`. The response
-  JSON contains the message `id`.
+- **Phone → Mac:** `GET https://ntfy.sh/<topic>/publish?message=lock` (ntfy's
+  GET publish form — a single Shortcut action with no request body). The
+  response JSON contains the message `id`.
 - **Mac → Phone:** `POST https://ntfy.sh/<topic>-ack` body
   `locked:<id>` or `already-locked:<id>`.
 - **Mac subscription:** streaming `GET /<topic>/json`, `since=<last processed
-  id>` after the first connection, `since=2m` on first connection after launch.
+  id>`, or — before any message has been seen — `since=<launch time>` (unix
+  seconds). This means a `lock` sent before the app started is never replayed,
+  so restarting the app right after an unlock cannot re-lock the Mac; a `lock`
+  sent while the Mac was briefly offline is still delivered on reconnect. One
+  filter is kept for the app's lifetime so duplicates are caught across
+  reconnects.
   Lines with `event` `open`/`keepalive` are ignored.
 - **Staleness:** commands with `time` older than 120 s are ignored (logged).
 - **Unknown bodies:** ignored and logged.
@@ -180,13 +197,14 @@ Not preventable (documented, accepted): long-press power button, closing the lid
 ## 6. iPhone Shortcut ("Lock Mac")
 
 Actions:
-1. Get Contents of URL — POST `https://ntfy.sh/<topic>`, body `lock`.
+1. Get Contents of URL — `https://ntfy.sh/<topic>/publish?message=lock`.
 2. Get Dictionary Value `id` from the result.
 3. Wait 4 seconds.
-4. Get Contents of URL — GET `https://ntfy.sh/<topic>-ack/json?poll=1&since=30s`.
-5. If the result contains the `id` → show "✅ Mac locked" (or "✅ Mac was
-   already locked"); otherwise → "⚠️ No reply — Mac may be asleep, lid closed,
-   or offline".
+4. Get Contents of URL — `https://ntfy.sh/<topic>-ack/raw?poll=1&since=30s`
+   (plain-text message bodies, one per line).
+5. If the result contains `locked:<id>` → show "✅ Mac locked" (this also
+   matches `already-locked:<id>` — both mean the Mac is locked); otherwise →
+   "⚠️ No reply — Mac may be asleep, lid closed, or offline".
 6. Network failure in step 1 → Shortcuts' own error ("couldn't reach relay").
 
 Delivery: GlassLock writes the workflow plist (ShortcutBuilder), signs it with
@@ -217,6 +235,14 @@ Screen widget — all native Shortcut features, no extra code.
   and `KeepAlive = { SuccessfulExit = false }`, `launchctl bootstrap`.
 - Secret stored in a 0600 file rather than Keychain, because ad-hoc rebuilds
   change the signature and would trigger Keychain access prompts.
+
+## 8a. Developer safety flags
+
+`--dev-auto-unlock <seconds>` unlocks every glass lock after N seconds;
+`--dev-lock-now` glass-locks 2 s after launch and implies a 30 s auto-unlock.
+Used only while building/testing so the developer is never trapped behind a
+half-working overlay. The LaunchAgent never passes them; the menu shows
+"Developer mode" when they are on.
 
 ## 9. Testing
 
