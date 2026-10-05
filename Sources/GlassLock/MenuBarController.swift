@@ -19,7 +19,10 @@ final class MenuBarController: NSObject {
             menu.addItem(dev)
         }
         menu.addItem(.separator())
-        menu.addItem(makeItem("Glass Lock Now", #selector(lockNow)))
+        let lockItem = makeItem("Glass Lock Now", #selector(lockNow))
+        lockItem.keyEquivalent = "l"
+        lockItem.keyEquivalentModifierMask = [.control, .command]
+        menu.addItem(lockItem)
         menu.addItem(makeItem("Open Log", #selector(openLog)))
         menu.addItem(.separator())
         menu.addItem(makeItem("Quit GlassLock", #selector(quit)))

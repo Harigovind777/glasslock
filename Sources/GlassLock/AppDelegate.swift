@@ -9,6 +9,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var menu: MenuBarController!
     let topicStore = TopicStore(directory: AppPaths.supportDirectory)
     var relay: RelayClient?
+    private var lockHotKey: GlobalHotKey?
 
     init(options: LaunchOptions) {
         self.options = options
@@ -24,6 +25,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         Log.write("launched\(options.isDevMode ? " (developer mode)" : "")")
         menu = MenuBarController(devMode: options.isDevMode)
         menu.onLockNow = { [weak self] in self?.controller.handle(.lockRequested(.local)) }
+        lockHotKey = GlobalHotKey(keyCode: GlobalHotKey.lockKeyCode, modifiers: GlobalHotKey.lockModifiers) { [weak self] in
+            Log.write("hotkey: Ctrl+Cmd+L")
+            self?.controller.handle(.lockRequested(.local))
+        }
         menu.insertItem("Install iPhone Shortcut…", action: #selector(installShortcut), target: self)
         menu.insertItem("Reset Secret…", action: #selector(resetSecret), target: self)
         menu.insertItem("Lock Screen Image…", action: #selector(chooseCenterImage), target: self)
